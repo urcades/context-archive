@@ -180,3 +180,27 @@ Rules are OR alternatives and literal, case-sensitive matches. Supported fields/
 `put-project` atomically replaces the definition with the same ID. Set `"enabled": false` to disable it. Definitions are stored in an optional `projects` table inside the archive, survive reindexing, and are included in backups and JSONL exports made by this version. No personal definitions ship in the source. Reading an older archive requires no migration; the optional table is created only by the explicit editor. MCP cannot edit the registry.
 
 Correlation queries require an explicit timezone-aware range of at most 31 days. They support `source_id`, `profile`, `kind`, `fidelity`, and `provenance` filters. Pagination fixes the capture boundary and rejects cursors after registry edits or reindexing. Episodes are assembled before pagination, so page boundaries do not split a group. Queries exceeding 10,000 events, 20 MB of input payloads, five seconds of scanning, or the response budget fail explicitly: narrow the range/filter, or use the existing paginated timeline for individual events. Invalid dates remain available as original evidence but cannot participate in temporal grouping.
+
+## Native macOS prototype
+
+The Swift 6 menu bar control panel packages this same Python engine. Build locally on an Apple silicon Mac with the Command Line Tools, Python 3.12, and `uv` available:
+
+```sh
+./scripts/build-macos-app.sh
+```
+
+The output is `dist/Context Archive.app`. It contains its interpreter and locked dependencies; running the built app needs no checkout, external Python, or network access. Builds use ad-hoc signing for local testing. This is not a notarized public download. Set `CA_BUILD_NUMBER` to a higher numeric bundle version whenever replacing an installed build (for example, `CA_BUILD_NUMBER=5 ./scripts/build-macos-app.sh`). A stable development certificate can be selected with `CA_CODESIGN_IDENTITY`; macOS may reject updated ad-hoc helpers even when standalone signature verification succeeds. Move the app to a stable location before enabling its background agent; rebuilding/replacing an ad-hoc-signed app can require permission setup again.
+
+Open Settings from the menu bar to see discovered sources and full browser profile identifiers. Individual toggles stop future collection without removing evidence. Newly discovered profiles are included by default. **Quit closes the interface; it does not stop collection.** Pause/Resume is persistent. Disable Background Collection unregisters the app-managed service and preserves data. Capture Now uses that same agent, not a foreground-only collection path.
+
+For an existing installation, **Use Existing Context Archive** saves a consistent archive backup and previous setup under the private application's `migration-backups` directory, removes the previous collector's startup entry, and registers the app agent. **Restore Previous Collector** unregisters the replacement and restores the previous service configuration without replacing current evidence with an older backup. MCP registration is a separate explicit action; its original configuration is saved locally for selective recovery. Other utilities are untouched.
+
+macOS may require approval in Login Items and Full Disk Access. Follow the executable path shown in Settings, then verify an actual background cycle and its per-source results. An old successful capture or a successful foreground check is not proof that the new agent has access. Locked browser databases are reported separately; the app never restarts browsers automatically.
+
+New local control commands are `control-status`, `control-update --params JSON`, and `control-cycle --origin manual|background`. Status is a versioned JSON control interface; SQLite may manage transient WAL sidecars during read-only access, but polling never changes archived evidence or snapshots source databases. `native-prepare-migration` and `native-rollback` are service-management operations used by the explicit setup actions. These commands are not exposed as MCP tools.
+
+Run Python tests with `PYTHONPATH=src .venv/bin/python -m pytest`; run Swift tests with `swift test --package-path macos`. To test a relocated bundle, synthetic collection, and real stdio MCP without touching live services:
+
+```sh
+CA_TEST_APP="$PWD/dist/Context Archive.app" PYTHONPATH=src .venv/bin/python -m pytest tests/test_macos_bundle.py
+```

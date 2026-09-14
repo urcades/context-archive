@@ -1,0 +1,3 @@
+// swift-tools-version: 6.0
+import PackageDescription
+let package = Package(name: "ContextArchive", platforms: [.macOS(.v14)], products: [.executable(name: "ContextArchiveApp", targets: ["ContextArchiveApp"]), .executable(name: "ContextArchiveAgent", targets: ["ContextArchiveAgent"]), .executable(name: "context-archive", targets: ["ContextArchiveCLI"])], targets: [.target(name: "ContextArchiveCore"), .executableTarget(name: "ContextArchiveApp", dependencies: ["ContextArchiveCore"]), .executableTarget(name: "ContextArchiveAgent", dependencies: ["ContextArchiveCore"]), .executableTarget(name: "ContextArchiveCLI", dependencies: ["ContextArchiveCore"]), .testTarget(name: "ContextArchiveCoreTests", dependencies: ["ContextArchiveCore"])])

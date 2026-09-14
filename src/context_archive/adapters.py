@@ -19,12 +19,13 @@ class Source:
     device: str | None = None
 
 
-def discover(home: Path | None = None, config: dict | None = None) -> dict:
+def discover(home: Path | None = None, config: dict | None = None, include_disabled: bool = False) -> dict:
     """Re-enumerate only known roots and their direct profile directories."""
     home, config = Path(home or Path.home()), config or {}
     sources, issues, seen = [], [], set()
     seen_files = set()
     exclusions = config.get('exclusions', [])
+    disabled = {str(Path(p).resolve()) for p in config.get('disabled_source_paths', [])}
 
     def issue(path, exc):
         issues.append({'path': str(path), 'status': 'permission_denied' if isinstance(exc, PermissionError) else 'discovery_failed', 'message': str(exc)})
@@ -33,6 +34,7 @@ def discover(home: Path | None = None, config: dict | None = None) -> dict:
         try:
             path = Path(source.path).expanduser()
             canonical = path.resolve()
+            if not include_disabled and str(canonical) in disabled: return
             if any(fnmatch(str(p), pattern) for p in (path, canonical) for pattern in exclusions):
                 return
             if not path.is_file():
@@ -78,11 +80,15 @@ def discover(home: Path | None = None, config: dict | None = None) -> dict:
     for entry in config.get('sources', []):
         try:
             source = entry if isinstance(entry, Source) else Source(**entry)
+            if not isinstance(source.adapter,str): raise ValueError('adapter must be a string')
+            for field in ('browser','profile','device'):
+                if getattr(source,field) is not None and not isinstance(getattr(source,field),str):
+                    raise ValueError(field+' must be a string or null')
             if source.adapter not in {'knowledge', 'safari', 'chromium', 'legacy_browser'}:
                 raise ValueError('Unknown adapter: ' + source.adapter)
             add(source, explicit=True)
         except (TypeError, ValueError) as exc:
-            issue(entry, exc)
+            issue(entry.get('path',entry) if isinstance(entry,dict) else entry, exc)
     return {'sources': sources, 'issues': issues}
 
 

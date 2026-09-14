@@ -7,18 +7,13 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
-from . import adapters, core, query, runtime
+from . import adapters, core, query, runtime, control
 
 READ_TOOLS=('status','sources','search','timeline','get_record','get_blob','decode_blob','describe_schema','query','app_usage_summary','domain_summary','projects','episodes','project_timeline')
 
 
 def read_config(path):
-    if not path.exists(): return {'sources':[],'exclusions':[]}
-    config=json.loads(path.read_text())
-    if not isinstance(config,dict) or not isinstance(config.get('sources',[]),list) or not isinstance(config.get('exclusions',[]),list):
-        raise ValueError('Config requires sources and exclusions arrays')
-    if not all(isinstance(x,str) for x in config.get('exclusions',[])): raise ValueError('Exclusions must be strings')
-    return config
+    return control.read_config(path)
 
 
 def invoke(name,archive,params):
@@ -55,6 +50,10 @@ def main(argv=None):
     for name in READ_TOOLS:
         sub=commands.add_parser(name.replace('_','-'),aliases=[name] if '_' in name else [],parents=[common])
         sub.add_argument('--params',default='{}',help=f'JSON keyword arguments for {name}{inspect.signature(getattr(query,name))}; archive is supplied separately')
+    for name in ('native-prepare-migration','native-rollback'): commands.add_parser(name,parents=[common])
+    commands.add_parser('control-status',parents=[common])
+    commands.add_parser('control-update',parents=[common]).add_argument('--params',required=True)
+    commands.add_parser('control-cycle',parents=[common]).add_argument('--origin',choices=['manual','background'],default='manual')
     for name in ('doctor','capture','reindex','uninstall','mcp'): commands.add_parser(name,parents=[common])
     for name in ('export','backup'):
         commands.add_parser(name,parents=[common]).add_argument('destination',type=Path)
@@ -70,6 +69,12 @@ def main(argv=None):
         elif name=='put_project':
             from .correlation import put_project
             result=put_project(archive,json.loads(args.definition.read_text()))
+        elif name in ('native_prepare_migration','native_rollback'):
+            from . import native
+            result=getattr(native,'prepare_migration' if name=='native_prepare_migration' else 'rollback')(archive,config_path)
+        elif name=='control_status': result=control.status(archive,config_path)
+        elif name=='control_update': result=control.update(config_path,json.loads(args.params))
+        elif name=='control_cycle': result=control.cycle(archive,config_path,args.origin)
         elif name=='doctor': result=doctor(read_config(config_path))
         elif name=='capture':
             discovered=adapters.discover(config=read_config(config_path))
@@ -88,7 +93,7 @@ def main(argv=None):
             from .mcpserver import create_server
             create_server(archive).run(); return 0
         print(json.dumps(result,ensure_ascii=True,default=str))
-        return 1 if name=='capture' and result['failures'] else 0
+        return 1 if (name=='capture' and result['failures']) or (name=='control_cycle' and result['status'] in ('partial','failed','interrupted')) else 0
     except (ValueError,TypeError,OSError,sqlite3.Error,TimeoutError,subprocess.SubprocessError,RuntimeError) as exc:
         print(json.dumps({'error':str(exc)}),file=sys.stderr); return 2
 
