@@ -109,3 +109,12 @@ def test_empty_discovery_is_explicit(tmp_path):
     a=tmp_path/'archive';result=core.collect(a,[])
     assert result['failures'][0]['status']=='no_sources'
     with core.readonly(a) as c:assert c.execute('SELECT count(*) FROM attempts').fetchone()[0]==1
+
+
+def test_snapshot_reports_lock_separately_from_slow_backup(tmp_path):
+    path = db(tmp_path/'locked.sqlite3', 'CREATE TABLE t(value);')
+    with sqlite3.connect(path) as blocker:
+        blocker.execute('BEGIN EXCLUSIVE')
+        with pytest.raises(TimeoutError, match='locked'):
+            with core.snapshot(path, timeout=0.01):
+                pytest.fail('An exclusively locked database cannot be snapshotted')

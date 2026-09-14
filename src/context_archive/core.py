@@ -165,8 +165,13 @@ def snapshot(path, timeout=60):
         dest=Path(directory)/'snapshot.sqlite3'
         with closing(readonly(path)) as live, closing(sqlite3.connect(dest)) as snap:
             deadline=time.monotonic()+timeout
-            def progress(*_):
-                if time.monotonic()>deadline: raise TimeoutError('Snapshot exceeded deadline')
+            def progress(status, remaining, total):
+                if time.monotonic()>deadline:
+                    # Only SQLite's actual busy/locked result identifies contention.
+                    # A slow but progressing backup remains a generic timeout.
+                    if status in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                        raise TimeoutError('Snapshot database locked at deadline')
+                    raise TimeoutError('Snapshot exceeded deadline')
             live.backup(snap,pages=256,progress=progress,sleep=0.01)
             snap.row_factory=sqlite3.Row
             snap.text_factory=text_factory
