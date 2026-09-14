@@ -210,7 +210,10 @@ public extension ArchiveStatus {
         }
         if cycle.status == "paused" { return true } // Confirms scheduling, not protected-data access.
         if cycle.status == "completed" { return true }
-        if cycle.status == "partial" && !cycle.captures.isEmpty { return true }
+        // SQLite can report protected-source denial as a generic open failure.
+        // Only a positively identified browser lock may be deferred at activation;
+        // success on another source must not mask missing protected evidence.
+        if cycle.status == "partial" && !cycle.captures.isEmpty && !cycle.failures.isEmpty && cycle.failures.allSatisfy({ $0.status == "locked" }) { return true }
         throw CommandError.failed(1, "Background activation failed: \(cycle.failures.map(\.message).joined(separator: "; "))")
     }
 }

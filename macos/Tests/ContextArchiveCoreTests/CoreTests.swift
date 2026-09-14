@@ -85,13 +85,14 @@ final class CoreTests: XCTestCase, @unchecked Sendable {
     }
     func testActivationRequiresNewBackgroundEvidence() throws {
         let since = Date(timeIntervalSince1970: 1789344000)
-        func status(_ state: String = "completed", origin: String = "background", started: String = "2026-09-14T00:00:01Z", permissionDenied: Bool = false, captured: Bool = true) throws -> ArchiveStatus {
-            let receipt: [String: Any] = ["id": "new", "origin": origin, "status": state, "started_at": started, "ended_at": "2026-09-14T00:00:02Z", "captures": captured ? [["capture_id": 1, "source_id": "id", "rows": 1, "changed": 1, "deleted": 0]] : [], "failures": permissionDenied ? [["status": "permission_denied", "message": "Denied"]] : []]
+        func status(_ state: String = "completed", origin: String = "background", started: String = "2026-09-14T00:00:01Z", permissionDenied: Bool = false, failure: String? = nil, captured: Bool = true) throws -> ArchiveStatus {
+            let receipt: [String: Any] = ["id": "new", "origin": origin, "status": state, "started_at": started, "ended_at": "2026-09-14T00:00:02Z", "captures": captured ? [["capture_id": 1, "source_id": "id", "rows": 1, "changed": 1, "deleted": 0]] : [], "failures": permissionDenied ? [["status": "permission_denied", "message": "Denied"]] : (failure.map { [["status": $0, "message": "Source failed"]] } ?? [])]
             let data = try JSONSerialization.data(withJSONObject: ["schema_version": 1, "paused": false, "collecting": false, "archive_exists": true, "sources": [], "issues": [], "permission_executable": "/app/python", "archive_path": "/archive", "config_path": "/config", "latest_cycle": receipt])
             return try JSONDecoder().decode(ArchiveStatus.self, from: data)
         }
         XCTAssertTrue(try status().activationVerified(since: since))
-        XCTAssertTrue(try status("partial").activationVerified(since: since))
+        XCTAssertTrue(try status("partial", failure: "locked").activationVerified(since: since))
+        XCTAssertThrowsError(try status("partial", failure: "capture_failed").activationVerified(since: since))
         XCTAssertTrue(try status("paused", captured: false).activationVerified(since: since))
         XCTAssertFalse(try status(origin: "manual").activationVerified(since: since))
         XCTAssertFalse(try status(started: "2026-09-13T23:59:59Z").activationVerified(since: since))
