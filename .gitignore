@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.sqlite*
+*.db*
+*.jsonl
+*.log
+*.lock.tmp
+config.json
+state/
+data/
+dist/
+.superpowers/
+
+.cache/

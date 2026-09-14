@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "context-archive"
+version = "0.1.0"
+description = "Local macOS context archive with source-linked CLI and MCP retrieval"
+requires-python = ">=3.12"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = ["mcp>=1.30,<2"]
+
+[project.scripts]
+context-archive = "context_archive.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/context_archive"]
