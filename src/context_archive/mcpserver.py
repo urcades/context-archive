@@ -66,6 +66,21 @@ def create_server(archive):
         """Domain summary; bounded read-only archive retrieval."""
         return invoke('domain_summary', archive, {'start': start, 'end': end, 'source_id': source_id, 'profile': profile, 'browser': browser, 'domain': domain, 'fidelity': fidelity, 'provenance': provenance, 'limit': limit})
 
+    @server.tool(annotations=annotations)
+    def projects() -> dict:
+        """Read explicit project rules. Rule matches are associations, not proof of work."""
+        return invoke('projects', archive, {})
+
+    @server.tool(annotations=annotations)
+    def episodes(start: str, end: str, source_id: str | None = None, profile: str | None = None, kind: str | None = None, fidelity: str | None = None, provenance: str | None = None, project_id: str | None = None, gap_seconds: int = 300, max_span_seconds: int = 3600, limit: int = 20, cursor: str | None = None) -> dict:
+        """Temporal groups within a timezone-aware window, with source lanes and evidence. Not dwell time or causal links. Narrow the window if a budget is exceeded."""
+        return invoke('episodes', archive, dict(start=start,end=end,source_id=source_id,profile=profile,kind=kind,fidelity=fidelity,provenance=provenance,project_id=project_id,gap_seconds=gap_seconds,max_span_seconds=max_span_seconds,limit=limit,cursor=cursor))
+
+    @server.tool(annotations=annotations)
+    def project_timeline(project_id: str, start: str, end: str, source_id: str | None = None, profile: str | None = None, kind: str | None = None, fidelity: str | None = None, provenance: str | None = None, limit: int = 100, cursor: str | None = None) -> dict:
+        """Find events associated by explicit project rules; each match explains its rule indexes and links to evidence."""
+        return invoke('project_timeline', archive, dict(project_id=project_id,start=start,end=end,source_id=source_id,profile=profile,kind=kind,fidelity=fidelity,provenance=provenance,limit=limit,cursor=cursor))
+
     return server
 
 

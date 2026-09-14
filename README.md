@@ -6,7 +6,13 @@ The collector preserves every observed table, column, blob, and revision in the 
 
 ## Install
 
-Requires macOS. From a checkout:
+Requires macOS. Clone and install:
+
+```sh
+git clone https://github.com/urcades/context-archive.git && cd context-archive && ./install.sh
+```
+
+Or, from an existing checkout:
 
 ```sh
 ./install.sh
@@ -136,3 +142,41 @@ Possible applications include a custom Screen Time-style dashboard, a daily repo
 ## License
 
 [MIT](LICENSE). Knowledge Archive and Browser History Receiver informed this implementation; the original projects remain independent.
+
+## Correlate activity across sources
+
+`episodes`, `projects`, and `project-timeline` are available through both the JSON CLI and read-only MCP. They add explanations above the evidence archive; they do not modify collected records or require a model.
+
+```sh
+context-archive episodes --params '{"start":"2026-09-07T00:00:00-04:00","end":"2026-09-14T00:00:00-04:00"}'
+```
+
+Episodes group event **onsets** within a five-minute gap, with at most one hour between the first and last onset by default. Change `gap_seconds` and `max_span_seconds` to explore different grouping assumptions. An app interval beginning before the requested range is clipped to the range for grouping; its original timestamps remain in the event. A long interval never bridges otherwise separate episodes. `span_seconds` measures first-to-last onset, **not active time or website dwell time**.
+
+Each episode returns its events, raw evidence references, and distinct lanes for source, collecting installation, and provenance. A lane is not an inferred originating device. Safari sync and imported browsing remain visibly separate, even when their timestamps are close. Temporal proximity alone does not establish shared intent, attention, or causation.
+
+For explicit project or subject associations, create a local JSON definition:
+
+```json
+{
+  "id": "example-project",
+  "name": "Example project",
+  "rules": [
+    {"field": "url", "operator": "prefix", "value": "https://github.com/example/project"},
+    {"field": "title", "operator": "contains", "value": "Example project"}
+  ]
+}
+```
+
+```sh
+context-archive put-project /path/to/project.json
+context-archive projects
+context-archive project-timeline --params '{"project_id":"example-project","start":"2026-09-07T00:00:00-04:00","end":"2026-09-14T00:00:00-04:00"}'
+context-archive episodes --params '{"project_id":"example-project","start":"2026-09-07T00:00:00-04:00","end":"2026-09-14T00:00:00-04:00"}'
+```
+
+Rules are OR alternatives and literal, case-sensitive matches. Supported fields/operators: `url` exact/prefix; `title` exact/contains; `domain`, `app_id`, `source_id`, and `profile` exact. URL prefixes respect `/`, `?`, and `#` boundaries, so `/project` does not match `/project-other`. Anchoring a shared app or domain may associate unrelated activity; use specific URLs or titles where possible. Events can match several projects, and every match names its project and zero-based rule indexes. These associations are user-authored interpretations, not verified work duration or exclusive classifications.
+
+`put-project` atomically replaces the definition with the same ID. Set `"enabled": false` to disable it. Definitions are stored in an optional `projects` table inside the archive, survive reindexing, and are included in backups and JSONL exports made by this version. No personal definitions ship in the source. Reading an older archive requires no migration; the optional table is created only by the explicit editor. MCP cannot edit the registry.
+
+Correlation queries require an explicit timezone-aware range of at most 31 days. They support `source_id`, `profile`, `kind`, `fidelity`, and `provenance` filters. Pagination fixes the capture boundary and rejects cursors after registry edits or reindexing. Episodes are assembled before pagination, so page boundaries do not split a group. Queries exceeding 10,000 events, 20 MB of input payloads, five seconds of scanning, or the response budget fail explicitly: narrow the range/filter, or use the existing paginated timeline for individual events. Invalid dates remain available as original evidence but cannot participate in temporal grouping.

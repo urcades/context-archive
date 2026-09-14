@@ -60,7 +60,7 @@ def export_archive(archive,destination):
         write({'type':'manifest','format':'context-archive','format_version':1,'archive_id':info['archive_id'],
                'through_capture':maximum,'schema':[dict(r) for r in c.execute("SELECT name,sql FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'event_search%' ORDER BY name")],
                'note':'Original rows use payload_json with lossless cell tags; exported SQLite BLOB cells use $bytes_base64. FTS is rebuildable.'})
-        for table in TABLES:
+        for table in (*TABLES, *(['projects'] if c.execute("SELECT 1 FROM sqlite_schema WHERE name='projects' AND type='table'").fetchone() else [])):
             for row in c.execute('SELECT * FROM '+core.quote(table)+' ORDER BY rowid'):
                 write({'type':table,'record':{k:encode_cell(v) for k,v in dict(row).items()}})
         write({'type':'end','preceding_lines':count,'sha256':checksum.hexdigest(),'through_capture':maximum},False)

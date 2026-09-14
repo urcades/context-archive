@@ -9,7 +9,7 @@ import subprocess
 import sys
 from . import adapters, core, query, runtime
 
-READ_TOOLS=('status','sources','search','timeline','get_record','get_blob','decode_blob','describe_schema','query','app_usage_summary','domain_summary')
+READ_TOOLS=('status','sources','search','timeline','get_record','get_blob','decode_blob','describe_schema','query','app_usage_summary','domain_summary','projects','episodes','project_timeline')
 
 
 def read_config(path):
@@ -58,6 +58,7 @@ def main(argv=None):
     for name in ('doctor','capture','reindex','uninstall','mcp'): commands.add_parser(name,parents=[common])
     for name in ('export','backup'):
         commands.add_parser(name,parents=[common]).add_argument('destination',type=Path)
+    editor=commands.add_parser('put-project',parents=[common]); editor.add_argument('definition',type=Path)
     imp=commands.add_parser('import',parents=[common]); imp.add_argument('kind',choices=['knowledge','browser']); imp.add_argument('path',type=Path)
     install=commands.add_parser('install',parents=[common]); install.add_argument('--no-start',action='store_true'); install.add_argument('--codex',action='store_true')
     args=parser.parse_args(argv)
@@ -66,6 +67,9 @@ def main(argv=None):
         config_path=Path(getattr(args,'config',root/'config.json')).expanduser().resolve()
         name=args.command.replace('-','_')
         if name in READ_TOOLS: result=invoke(name,archive,json.loads(args.params))
+        elif name=='put_project':
+            from .correlation import put_project
+            result=put_project(archive,json.loads(args.definition.read_text()))
         elif name=='doctor': result=doctor(read_config(config_path))
         elif name=='capture':
             discovered=adapters.discover(config=read_config(config_path))
