@@ -23,7 +23,7 @@ def test_stdio_readonly_parity(tmp_path):
                 result=await session.call_tool('sources',{})
                 assert not result.isError
                 assert json.loads(result.content[0].text)==cli.invoke('sources',archive,{})
-                for name,arguments in [('projects',{}),('project_timeline',{'project_id':'example','start':'2001-01-01T00:00:00Z','end':'2001-01-02T00:00:00Z'}),('episodes',{'start':'2001-01-01T00:00:00Z','end':'2001-01-02T00:00:00Z'})]:
+                for name,arguments in [('episodes',{'start':'2001-01-01T00:00:00Z','end':'2001-01-02T00:00:00Z','compact':True}),('projects',{}),('project_timeline',{'project_id':'example','start':'2001-01-01T00:00:00Z','end':'2001-01-02T00:00:00Z'}),('episodes',{'start':'2001-01-01T00:00:00Z','end':'2001-01-02T00:00:00Z'})]:
                     correlated=await session.call_tool(name,arguments)
                     assert not correlated.isError
                     assert json.loads(correlated.content[0].text)==cli.invoke(name,archive,arguments)

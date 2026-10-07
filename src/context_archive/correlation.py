@@ -83,7 +83,8 @@ def _seconds(a,b):
 
 def retrieve(archive, mode, start, end, source_id=None, profile=None, kind=None,
              fidelity=None, provenance=None, project_id=None, gap_seconds=300,
-             max_span_seconds=3600, limit=20, cursor=None):
+             max_span_seconds=3600, limit=20, cursor=None, compact=False):
+    if type(compact) is not bool: raise ValueError("compact must be boolean")
     query.bound(limit,100)
     if type(gap_seconds) is not int or not 0<=gap_seconds<=3600:
         raise ValueError('gap_seconds must be an integer between 0 and 3600')
@@ -98,7 +99,7 @@ def retrieve(archive, mode, start, end, source_id=None, profile=None, kind=None,
         if project_id is not None and not any(p['id']==project_id and p['enabled'] for p in registry):
             raise ValueError('Unknown or disabled project')
         fingerprint={**filters,'mode':mode,'project_id':project_id,'registry_revision':revision,
-                     'gap_seconds':gap_seconds,'max_span_seconds':max_span_seconds,'correlator_version':VERSION}
+                     'gap_seconds':gap_seconds,'max_span_seconds':max_span_seconds,'correlator_version':VERSION,'compact':compact}
         scope=query._scope(c,fingerprint,None,cursor)
         # Recompute the bounded window at the fixed observation boundary before
         # paginating episodes. Paginating raw events first would split episodes.
@@ -130,9 +131,17 @@ def retrieve(archive, mode, start, end, source_id=None, profile=None, kind=None,
                 episode['event_count']=len(episode['events'])
                 episode['lanes']=list({core.canonical(e['lane']):e['lane'] for e in episode['events']}.values())
                 episode['id']=core.digest(core.canonical([scope['archive'],scope['through'],revision,episode['started_at'],[(e['source_id'],e['event_key']) for e in episode['events']]]))
+        insight={}
+        if compact and mode=='episodes':
+            from .insights import compact_episode, recurring_domains, window_coverage
+            insight={'recurring_domains':recurring_domains(items),
+                     'window_coverage':window_coverage(c,rows,filters,scope['through']),
+                     'interpretation_version':1,
+                     'navigation_note':'Groups are presentation only, not deduplicated visits. Authentication labels are heuristics. No human-versus-agent attribution or task outcome is inferred.'}
+            items=[compact_episode(item) for item in items]
         offset=scope['after'][1] if scope['after'] else 0
         if offset<0 or offset>len(items):raise ValueError('Invalid correlation cursor offset')
-        page=[]; budget=160_000
+        page=[]; budget=160_000-len(core.canonical(insight))
         for item in items[offset:offset+limit]:
             size=len(core.canonical(item))
             if size>budget:
@@ -141,6 +150,6 @@ def retrieve(archive, mode, start, end, source_id=None, profile=None, kind=None,
             page.append(item);budget-=size
         next_offset=offset+len(page)
         token=base64.urlsafe_b64encode(core.canonical({**scope,'after':['offset',next_offset]}).encode()).decode() if next_offset<len(items) else None
-        return {key:page,'next_cursor':token,'total':len(items),'events_scanned':scanned,
+        return {**insight,key:page,'next_cursor':token,'total':len(items),'events_scanned':scanned,
                 'registry_revision':revision,'correlator_version':VERSION,
                 'coverage':query._coverage(c,scope['through']),'limitations':LIMITATIONS}

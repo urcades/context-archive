@@ -357,10 +357,10 @@ def projects(archive):
     return retrieve(archive)
 
 
-def episodes(archive,start,end,source_id=None,profile=None,kind=None,fidelity=None,provenance=None,project_id=None,gap_seconds=300,max_span_seconds=3600,limit=20,cursor=None):
+def episodes(archive,start,end,source_id=None,profile=None,kind=None,fidelity=None,provenance=None,project_id=None,gap_seconds=300,max_span_seconds=3600,limit=20,cursor=None,compact=False):
     """Explain temporal groups with separate source lanes; spans are not dwell time."""
     from .correlation import retrieve
-    return retrieve(archive,'episodes',start,end,source_id,profile,kind,fidelity,provenance,project_id,gap_seconds,max_span_seconds,limit,cursor)
+    return retrieve(archive,'episodes',start,end,source_id,profile,kind,fidelity,provenance,project_id,gap_seconds,max_span_seconds,limit,cursor,compact)
 
 
 def project_timeline(archive,project_id,start,end,source_id=None,profile=None,kind=None,fidelity=None,provenance=None,limit=100,cursor=None):
