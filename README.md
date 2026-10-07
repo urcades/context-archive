@@ -204,3 +204,16 @@ Run Python tests with `PYTHONPATH=src .venv/bin/python -m pytest`; run Swift tes
 ```sh
 CA_TEST_APP="$PWD/dist/Context Archive.app" PYTHONPATH=src .venv/bin/python -m pytest tests/test_macos_bundle.py
 ```
+
+### iCloud tab observations
+
+Safari's local `CloudTabs.db` is discovered alongside history stores. Its tabs
+appear through timeline/search with `kind=browser_tab_observation`, using capture
+time as the observation time. Repeated captures intentionally record repeated
+observations; these are not visits and domain visit summaries exclude them.
+Raw references retain tab/device identifiers, URL, title and the uninterpreted
+`last_viewed_time` value. Device names are source claims, not inferred identities.
+This source uses `metadata_only` fidelity: binary sync fields are represented by
+size/hash omission markers, not stored bytes. No remote tab-close action is taken.
+Availability depends on what iCloud has synchronized to this Mac, not a direct
+connection to the phone. Existing history collectors retain their prior policy.

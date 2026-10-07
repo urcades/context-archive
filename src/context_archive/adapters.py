@@ -64,6 +64,7 @@ def discover(home: Path | None = None, config: dict | None = None, include_disab
                     home / 'Library/Containers/com.apple.Safari/Data/Library/WebKit']
     for root in safari_roots:
         add(Source(root / 'History.db', 'safari', 'Safari', 'Default'))
+        add(Source(root / 'CloudTabs.db', 'safari_tabs', 'Safari', 'iCloud Tabs'))
         for profile in children(root / 'Profiles'):
             add(Source(profile / 'History.db', 'safari', 'Safari', profile.name))
     # Safari has shipped both Safari/Profiles and WebKit/WebsiteData profile roots.
@@ -84,7 +85,7 @@ def discover(home: Path | None = None, config: dict | None = None, include_disab
             for field in ('browser','profile','device'):
                 if getattr(source,field) is not None and not isinstance(getattr(source,field),str):
                     raise ValueError(field+' must be a string or null')
-            if source.adapter not in {'knowledge', 'safari', 'chromium', 'legacy_browser'}:
+            if source.adapter not in {'knowledge', 'safari', 'safari_tabs', 'chromium', 'legacy_browser'}:
                 raise ValueError('Unknown adapter: ' + source.adapter)
             add(source, explicit=True)
         except (TypeError, ValueError) as exc:
@@ -182,6 +183,23 @@ def normalize(source: Source, rows: dict[str, list[dict]]) -> tuple[list[dict], 
                      'ended_at': None, 'raw_refs': [row['version_id']] + ([item['version_id']] if item else []),
                      'origin': {'visit': p, 'item': q}}
             _url_fields(event, q.get('url'), p.get('title', q.get('title')))
+            events.append(event)
+    elif source.adapter == 'safari_tabs':
+        for table in ('cloud_tabs', 'cloud_tab_devices'):
+            if table not in rows: warnings.append('Missing ' + table + ' table')
+        devices = {r['payload'].get('device_uuid'): r for r in rows.get('cloud_tab_devices', [])
+                   if isinstance(r['payload'].get('device_uuid'), str)}
+        for row in rows.get('cloud_tabs', []):
+            p = row['payload']
+            device = devices.get(p.get('device_uuid')) if isinstance(p.get('device_uuid'), str) else None
+            event = {'event_key': 'cloud_tabs:' + row['row_key'],
+                     'kind': 'browser_tab_observation', 'started_at': None, 'ended_at': None,
+                     'raw_refs': [row['version_id']] + ([device['version_id']] if device else []),
+                     'origin': {'tab': p, 'device': device['payload'] if device else {}},
+                     'time_basis': 'archive_observation',
+                     'last_viewed_time_raw': p.get('last_viewed_time')}
+            # Do not interpret Apple's private timestamp as a visit or tab-open time.
+            _url_fields(event, p.get('url'), p.get('title'))
             events.append(event)
     elif source.adapter == 'legacy_browser':
         if 'visits' not in rows:

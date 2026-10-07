@@ -218,7 +218,7 @@ def register_source(c, source, sid, identity, fidelity='raw_database'):
     c.execute('INSERT OR IGNORE INTO source_paths VALUES(?,?)',(sid,str(Path(source.path).expanduser().resolve())))
 
 
-def snapshot_rows(snap, table, archive):
+def snapshot_rows(snap, table, archive, omit_blobs=False):
     cols=snap.execute('PRAGMA table_xinfo('+quote(table)+')').fetchall()
     names=[r['name'] for r in cols if r['hidden']!=1]
     pk=[r['name'] for r in sorted(cols,key=lambda r:r['pk']) if r['pk']]
@@ -229,7 +229,13 @@ def snapshot_rows(snap, table, archive):
     projection=','.join(quote(n) for n in names)
     for index,row in enumerate(snap.execute('SELECT '+(rowid+',' if rowid else '')+projection+' FROM '+quote(table))):
         offset=int(rowid is not None)
-        payload={n:encode_value(row[i+offset],archive) for i,n in enumerate(names)}
+        # Tab sync records contain opaque CloudKit payloads; preserve lightweight
+        # metadata and change detection without persisting those binary contents.
+        def encode(value):
+            if omit_blobs and isinstance(value, bytes):
+                return {'$omitted_blob': {'sha256': digest(value), 'size': len(value), 'policy': 'metadata-v1'}}
+            return encode_value(value, archive)
+        payload={n:encode(row[i+offset]) for i,n in enumerate(names)}
         if pk and all(payload[n] is not None for n in pk): key=[payload[n] for n in pk]
         elif rowid: key=['$rowid',encode_value(row[0],archive)]
         else: key=['$ordinal',index]
@@ -278,6 +284,12 @@ def project(c, source, sid, cid, rows=None):
             refs=[ref for ref in event.get('raw_refs',[]) if ref in historical]
             if refs:event['historical_join_refs']=refs
     for event in events:
+        if source.adapter == 'safari_tabs':
+            # Each successful snapshot is a new observation, including unchanged
+            # tabs. Reindex uses the stored capture time, never the current clock.
+            observed = c.execute('SELECT observed_at FROM captures WHERE id=?', (cid,)).fetchone()[0]
+            event = {**event, 'event_key': event['event_key'] + ':observation:' + str(cid),
+                     'started_at': observed}
         event={**event,'normalizer_version':1}
         payload=canonical(event)
         previous=c.execute('SELECT payload_json FROM events WHERE source_id=? AND event_key=? ORDER BY capture_id DESC LIMIT 1',
@@ -295,7 +307,7 @@ def capture(source, archive):
     # Acquire the writer lock before taking the snapshot: observations cannot commit out of order.
     with writer(archive) as c, snapshot(source.path) as snap:
         sid,identity=source_identity(source,snap)
-        register_source(c,source,sid,identity)
+        register_source(c,source,sid,identity, fidelity='metadata_only' if source.adapter == 'safari_tabs' else 'raw_database')
         schema=[dict(r) for r in snap.execute('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name')]
         cid=c.execute('INSERT INTO captures(source_id,observed_at,schema_json,collected_by) VALUES(?,?,?,?)',(sid,now(),canonical(schema),c.execute('SELECT archive_id FROM archive_info').fetchone()[0])).lastrowid
         before={(r['table_name'],r['row_key']):r['content_hash'] for r in c.execute(
@@ -303,7 +315,7 @@ def capture(source, archive):
         seen=set(); changed=0
         for table in schema:
             if table['type']!='table': continue
-            for key,payload in snapshot_rows(snap,table['name'],c):
+            for key,payload in snapshot_rows(snap,table['name'],c,omit_blobs=True) if source.adapter == 'safari_tabs' else snapshot_rows(snap,table['name'],c):
                 pair=(table['name'],key)
                 if pair in seen: raise ValueError('Duplicate row identity in snapshot')
                 seen.add(pair)
