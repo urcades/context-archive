@@ -217,3 +217,19 @@ This source uses `metadata_only` fidelity: binary sync fields are represented by
 size/hash omission markers, not stored bytes. No remote tab-close action is taken.
 Availability depends on what iCloud has synchronized to this Mac, not a direct
 connection to the phone. Existing history collectors retain their prior policy.
+
+### Locked Chromium history
+
+Chromium history collection first attempts SQLite backup. If it encounters a
+confirmed lock, it falls back to a private copy of the database plus present WAL
+and rollback-journal files, adapting the earlier browser-history-receiver strategy.
+The disposable SHM index is rebuilt locally. Source files are never written.
+The fallback retries a changing file set, bounds copying/validation, allows journal
+recovery only on the copy, and requires SQLite integrity checking to succeed.
+
+These checks do **not** prove transactional consistency. Such captures carry
+`provenance=native_best_effort_copy` and acquisition details in event evidence and
+capture metadata. They never infer source deletions. Raw SQL, exports, reindexing,
+and MCP retain that qualification; timeline/summary coverage warns about it.
+Filter `provenance=native` when only normal native captures are wanted. Permission
+failures, generic timeouts and corrupt databases do not activate this fallback.

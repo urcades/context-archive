@@ -160,14 +160,15 @@ extension Engine: MigrationEngine {
     public func prepare() async throws { _ = try await call(["native-prepare-migration"], timeout: 180) }
     public func rollback() async throws { _ = try await call(["native-rollback"]) }
     public func verifyBackground(since: Date) async throws {
-        let deadline = Date().addingTimeInterval(180)
+        // Match the agent collection budget; a slow healthy cycle must not undo registration.
+        let deadline = Date().addingTimeInterval(900)
         while Date() < deadline {
             try Task.checkCancellation()
             let status = try JSONDecoder().decode(ArchiveStatus.self, from: await call(["control-status"], timeout: 15))
             if try status.activationVerified(since: since) { return }
             try await Task.sleep(for: .seconds(2))
         }
-        throw CommandError.failed(1, "Background collection did not produce a new completed receipt within three minutes. Inspect native-agent.log before retrying.")
+        throw CommandError.failed(1, "Background collection did not produce a new completed receipt within fifteen minutes. Inspect native-agent.log before retrying.")
     }
 }
 

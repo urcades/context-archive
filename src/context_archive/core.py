@@ -279,6 +279,10 @@ def project(c, source, sid, cid, rows=None):
                 rows.setdefault(item_table,[]).append({'row_key':r['row_key'],'version_id':r['version_id'],'payload':json.loads(r['payload_json'])})
                 present.add(r['row_key']);historical.append(r['version_id'])
     events,warnings=normalize(source,rows)
+    capture_schema = json.loads(c.execute('SELECT schema_json FROM captures WHERE id=?', (cid,)).fetchone()[0])
+    acquisition = next((r['metadata'] for r in capture_schema if r.get('type') == 'acquisition'), None)
+    if acquisition:
+        for event in events: event['acquisition'] = acquisition
     if historical:
         for event in events:
             refs=[ref for ref in event.get('raw_refs',[]) if ref in historical]
@@ -305,11 +309,15 @@ def project(c, source, sid, cid, rows=None):
 def capture(source, archive):
     protect(archive,[source.path])
     # Acquire the writer lock before taking the snapshot: observations cannot commit out of order.
-    with writer(archive) as c, snapshot(source.path) as snap:
+    from .acquisition import acquire
+    with writer(archive) as c, acquire(source) as (snap, acquisition):
         sid,identity=source_identity(source,snap)
         register_source(c,source,sid,identity, fidelity='metadata_only' if source.adapter == 'safari_tabs' else 'raw_database')
         schema=[dict(r) for r in snap.execute('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name')]
+        best_effort = acquisition['consistency'] == 'best_effort'
+        if best_effort: schema.append({'type': 'acquisition', 'metadata': acquisition})
         cid=c.execute('INSERT INTO captures(source_id,observed_at,schema_json,collected_by) VALUES(?,?,?,?)',(sid,now(),canonical(schema),c.execute('SELECT archive_id FROM archive_info').fetchone()[0])).lastrowid
+        if best_effort: c.execute("UPDATE captures SET provenance='native_best_effort_copy' WHERE id=?", (cid,))
         before={(r['table_name'],r['row_key']):r['content_hash'] for r in c.execute(
             'SELECT cr.table_name,cr.row_key,r.content_hash FROM current_rows cr JOIN records r USING(version_id) WHERE cr.source_id=?',(sid,))}
         seen=set(); changed=0
@@ -321,7 +329,7 @@ def capture(source, archive):
                 seen.add(pair)
                 if before.get(pair)==digest(payload): continue
                 observe(c,sid,cid,*pair,payload); changed+=1
-        gone=before.keys()-seen
+        gone=set() if best_effort else before.keys()-seen
         for table,key in gone:
             c.execute('INSERT INTO changes VALUES(?,?,?,NULL)',(cid,table,key))
             c.execute('DELETE FROM current_rows WHERE source_id=? AND table_name=? AND row_key=?',(sid,table,key))
@@ -329,7 +337,7 @@ def capture(source, archive):
         warnings=project(c,source,sid,cid)
         c.execute('INSERT INTO attempts(source_path,attempted_at,status,message) VALUES(?,?,?,?)',
                   (str(source.path),now(),'unsupported_schema' if warnings else 'ok',canonical(warnings)))
-    return {'capture_id':cid,'source_id':sid,'rows':len(seen),'changed':changed,'deleted':len(gone),'warnings':warnings}
+    return {'capture_id':cid,'source_id':sid,'rows':len(seen),'changed':changed,'deleted':len(gone),'warnings':warnings,'acquisition':acquisition}
 
 
 def collect(archive, sources, issues=()):

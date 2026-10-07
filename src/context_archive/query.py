@@ -257,6 +257,7 @@ def _event(row):
     event={k:row[k] for k in ('source_id','event_key','capture_id','kind','started_at','ended_at','url','title','domain','app_id','adapter','browser','profile','device','fidelity','provenance','observed_at','collected_by')}
     event.update(raw_refs=payload.get('raw_refs',[]),normalizer_version=payload.get('normalizer_version',1))
     if payload.get('historical_join_refs'):event['historical_join_refs']=payload['historical_join_refs']
+    if payload.get('acquisition'):event['acquisition']=payload['acquisition']
     # Timeline is compact; arbitrary original fields remain available through get_record.
     truncated=[]
     for k,v in event.items():
@@ -269,7 +270,7 @@ def _event(row):
 def _coverage(c,through):
     return {'through_capture':through,
             'sources':[dict(r) for r in c.execute('SELECT source_id,max(observed_at) AS last_observed_at FROM captures WHERE id<=? GROUP BY source_id LIMIT 501',(through,))],
-            'note':'Latest observed events, including pruned records. Sync completeness and attention are not established. Legacy browser observations may overlap native visits; filter fidelity or provenance for separate totals.'}
+            'note':'Latest observed events, including pruned records. Sync completeness and attention are not established. Captures with provenance native_best_effort_copy were copied from locked files; integrity checks do not prove transactional consistency. Filter provenance to separate them. Legacy browser observations may overlap native visits; filter fidelity or provenance for separate totals.'}
 
 
 def _page(archive, filters, limit, cursor, search_text=None):
